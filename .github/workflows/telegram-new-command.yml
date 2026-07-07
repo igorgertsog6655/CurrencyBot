@@ -1,0 +1,33 @@
+name: Telegram New Command
+
+on:
+  schedule:
+    # Poll Telegram for /new every 5 minutes.
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  poll-new-command:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Process /new commands
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
+          PROCESS_TELEGRAM_COMMANDS: "true"
+          TIMEZONE: Asia/Novosibirsk
+          HTTP_TIMEOUT_SECONDS: "20"
+        run: python src/bot.py
