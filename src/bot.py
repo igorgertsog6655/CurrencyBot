@@ -20,7 +20,7 @@ from telegram import Bot
 CBR_URL = "https://www.cbr.ru/scripts/XML_daily.asp"
 YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 YAHOO_HEADERS = {"User-Agent": "Mozilla/5.0 currency-bot/1.0"}
-MARKET_SYMBOLS = {"USD/RUB": "RUB=X", "EUR/RUB": "EURRUB=X", "BTC/RUB": "BTC-RUB"}
+MARKET_SYMBOLS = {"USD/RUB": "RUB=X", "EUR/RUB": "EURRUB=X", "BTC/USD": "BTC-USD"}
 
 
 @dataclass(frozen=True)
@@ -46,8 +46,12 @@ def parse_chat_ids(raw: str | None) -> list[int]:
     return [] if not raw else [int(item.strip()) for item in raw.split(",") if item.strip()]
 
 
-def format_rub(value: float) -> str:
+def format_number(value: float) -> str:
     return f"{value:,.2f}".replace(",", " ").replace(".", ",")
+
+
+def unit_label(pair: str) -> str:
+    return "Долларов США" if pair == "BTC/USD" else "Рублей"
 
 
 async def fetch_cbr_rates(client: httpx.AsyncClient) -> list[Rate]:
@@ -98,7 +102,7 @@ async def fetch_market_rates(client: httpx.AsyncClient) -> list[Rate]:
     rates: list[Rate] = []
     for pair, symbol in MARKET_SYMBOLS.items():
         date, value = (await fetch_yahoo_history(client, symbol, range_="5d"))[-1]
-        rates.append(Rate("Crypto" if pair == "BTC/RUB" else "Forex", pair, value, date))
+        rates.append(Rate("Crypto" if pair == "BTC/USD" else "Forex", pair, value, date))
     return rates
 
 
@@ -143,7 +147,7 @@ def build_chart(
         markersize=4,
     )
     ax.set_title(f"{pair}: {source} и модельный прогноз", fontsize=15, pad=14)
-    ax.set_ylabel("Рублей")
+    ax.set_ylabel(unit_label(pair))
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%d.%m"))
     ax.legend(loc="best")
     ax.margins(x=0.02)
@@ -163,20 +167,20 @@ def build_message(cbr_rates: list[Rate], market_rates: list[Rate], forecasts: di
             f"Курсы валют на {generated_at:%d.%m.%Y %H:%M}",
             "",
             "ЦБ РФ:",
-            f"USD/RUB: {format_rub(cbr['USD/RUB'].value)}",
-            f"EUR/RUB: {format_rub(cbr['EUR/RUB'].value)}",
+            f"USD/RUB: {format_number(cbr['USD/RUB'].value)}",
+            f"EUR/RUB: {format_number(cbr['EUR/RUB'].value)}",
             "",
             "Forex:",
-            f"USD/RUB: {format_rub(market['USD/RUB'].value)}",
-            f"EUR/RUB: {format_rub(market['EUR/RUB'].value)}",
+            f"USD/RUB: {format_number(market['USD/RUB'].value)}",
+            f"EUR/RUB: {format_number(market['EUR/RUB'].value)}",
             "",
             "Crypto:",
-            f"BTC/RUB: {format_rub(market['BTC/RUB'].value)}",
+            f"BTC/USD: {format_number(market['BTC/USD'].value)}",
             "",
             "Прогноз через 7 дней:",
-            f"USD/RUB: {format_rub(forecasts['USD/RUB'][-1].value)}",
-            f"EUR/RUB: {format_rub(forecasts['EUR/RUB'][-1].value)}",
-            f"BTC/RUB: {format_rub(forecasts['BTC/RUB'][-1].value)}",
+            f"USD/RUB: {format_number(forecasts['USD/RUB'][-1].value)}",
+            f"EUR/RUB: {format_number(forecasts['EUR/RUB'][-1].value)}",
+            f"BTC/USD: {format_number(forecasts['BTC/USD'][-1].value)}",
             "Прогноз модельный, не финансовая рекомендация.",
         ]
     )
@@ -190,7 +194,7 @@ async def build_report() -> tuple[str, list[Path]]:
             histories = {pair: await fetch_yahoo_history(client, symbol) for pair, symbol in MARKET_SYMBOLS.items()}
 
         forecasts = {pair: forecast_rate(history) for pair, history in histories.items()}
-        chart_specs = [("USD/RUB", "usd_rub", "Forex"), ("EUR/RUB", "eur_rub", "Forex"), ("BTC/RUB", "btc_rub", "Crypto")]
+        chart_specs = [("USD/RUB", "usd_rub", "Forex"), ("EUR/RUB", "eur_rub", "Forex"), ("BTC/USD", "btc_usd", "Crypto")]
         charts = [
             build_chart(histories[pair], forecasts[pair], Path(tmp_dir), pair, file_stem, source)
             for pair, file_stem, source in chart_specs
