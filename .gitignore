@@ -1,0 +1,6 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+last_usd_rub_forecast.png
+subscribers.json
