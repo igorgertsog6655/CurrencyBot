@@ -2,8 +2,9 @@ name: Daily Currency Report
 
 on:
   schedule:
-    # 07:00 and 19:00 Asia/Novosibirsk = 00:00 and 12:00 UTC.
-    - cron: "0 0,12 * * *"
+    # Temporary test schedule: every 5 minutes from minute 20 of each hour.
+    # For Asia/Novosibirsk this includes 20:20, 20:25, 20:30, etc.
+    - cron: "20/5 * * * *"
   workflow_dispatch:
 
 jobs:
