@@ -310,6 +310,7 @@ async def fetch_new_command_chat_ids(token: str, allowed_chat_ids: set[int]) -> 
         response = await client.get(url, params={"timeout": 0})
         response.raise_for_status()
         updates = response.json().get("result", [])
+        logging.info("Telegram updates fetched: %s", len(updates))
         update_ids = [update.get("update_id") for update in updates if isinstance(update.get("update_id"), int)]
         if update_ids:
             await client.get(url, params={"offset": max(update_ids) + 1, "timeout": 0})
@@ -324,13 +325,23 @@ async def fetch_new_command_chat_ids(token: str, allowed_chat_ids: set[int]) -> 
         message_ts = message.get("date")
         if not isinstance(chat_id, int) or not isinstance(message_ts, int):
             continue
+        age_seconds = now_ts - message_ts
+        command = text.split()[0].split("@")[0].lower() if text else ""
+        logging.info(
+            "Telegram update: chat_id=%s command=%s age_seconds=%s allowed=%s",
+            chat_id,
+            command or "-",
+            int(age_seconds),
+            chat_id in allowed_chat_ids,
+        )
         if allowed_chat_ids and chat_id not in allowed_chat_ids:
             continue
-        command = text.split()[0].split("@")[0] if text else ""
-        if command == "/new" and now_ts - message_ts <= COMMAND_MAX_AGE_SECONDS:
+        if command == "/new" and age_seconds <= COMMAND_MAX_AGE_SECONDS:
             chat_ids.append(chat_id)
 
-    return sorted(set(chat_ids))
+    unique_chat_ids = sorted(set(chat_ids))
+    logging.info("Accepted /new chat ids: %s", unique_chat_ids)
+    return unique_chat_ids
 
 
 async def main_async() -> None:
@@ -344,7 +355,10 @@ async def main_async() -> None:
     if env_bool("PROCESS_TELEGRAM_COMMANDS"):
         command_chat_ids = await fetch_new_command_chat_ids(token, set(chat_ids))
         if not command_chat_ids and env_bool("SEND_REPORT_WHEN_NO_COMMANDS"):
+            logging.info("No /new commands found, sending manual workflow report to TELEGRAM_CHAT_IDS")
             command_chat_ids = chat_ids
+        elif not command_chat_ids:
+            logging.info("No accepted /new commands found")
         for chat_id in command_chat_ids:
             await send_report(token, chat_id)
         return
