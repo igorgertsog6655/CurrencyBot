@@ -22,7 +22,7 @@ YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 YAHOO_HEADERS = {"User-Agent": "Mozilla/5.0 currency-bot/1.0"}
 MARKET_SYMBOLS = {"USD/RUB": "RUB=X", "EUR/RUB": "EURRUB=X", "BTC/USD": "BTC-USD"}
 REPORT_TIMES = (time(7, 0), time(19, 0))
-COMMAND_MAX_AGE_SECONDS = 600
+COMMAND_MAX_AGE_SECONDS = 24 * 60 * 60
 
 
 @dataclass(frozen=True)
@@ -342,7 +342,10 @@ async def main_async() -> None:
         raise RuntimeError("Заполните TELEGRAM_CHAT_IDS")
 
     if env_bool("PROCESS_TELEGRAM_COMMANDS"):
-        for chat_id in await fetch_new_command_chat_ids(token, set(chat_ids)):
+        command_chat_ids = await fetch_new_command_chat_ids(token, set(chat_ids))
+        if not command_chat_ids and env_bool("SEND_REPORT_WHEN_NO_COMMANDS"):
+            command_chat_ids = chat_ids
+        for chat_id in command_chat_ids:
             await send_report(token, chat_id)
         return
 
