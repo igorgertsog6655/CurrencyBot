@@ -22,6 +22,7 @@ YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 YAHOO_HEADERS = {"User-Agent": "Mozilla/5.0 currency-bot/1.0"}
 MARKET_SYMBOLS = {"USD/RUB": "RUB=X", "EUR/RUB": "EURRUB=X", "BTC/USD": "BTC-USD"}
 REPORT_TIMES = (time(7, 0), time(19, 0))
+COMMAND_MAX_AGE_SECONDS = 600
 
 
 @dataclass(frozen=True)
@@ -42,6 +43,11 @@ class ForecastPoint:
 def env_int(name: str, default: int) -> int:
     raw = os.getenv(name)
     return int(raw) if raw else default
+
+
+def env_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    return default if raw is None else raw.strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
 def parse_chat_ids(raw: str | None) -> list[int]:
@@ -298,6 +304,32 @@ async def send_report(token: str, chat_id: int) -> None:
             await bot.send_photo(chat_id=chat_id, photo=chart)
 
 
+async def fetch_new_command_chat_ids(token: str, allowed_chat_ids: set[int]) -> list[int]:
+    url = f"https://api.telegram.org/bot{token}/getUpdates"
+    async with httpx.AsyncClient(timeout=env_int("HTTP_TIMEOUT_SECONDS", 20)) as client:
+        response = await client.get(url, params={"offset": -100, "timeout": 0})
+        response.raise_for_status()
+        updates = response.json().get("result", [])
+
+    now_ts = datetime.now().timestamp()
+    chat_ids: list[int] = []
+    for update in updates:
+        message = update.get("message") or {}
+        text = (message.get("text") or "").strip()
+        chat = message.get("chat") or {}
+        chat_id = chat.get("id")
+        message_ts = message.get("date")
+        if not isinstance(chat_id, int) or not isinstance(message_ts, int):
+            continue
+        if allowed_chat_ids and chat_id not in allowed_chat_ids:
+            continue
+        command = text.split()[0].split("@")[0] if text else ""
+        if command == "/new" and now_ts - message_ts <= COMMAND_MAX_AGE_SECONDS:
+            chat_ids.append(chat_id)
+
+    return sorted(set(chat_ids))
+
+
 async def main_async() -> None:
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     chat_ids = parse_chat_ids(os.getenv("TELEGRAM_CHAT_IDS"))
@@ -305,6 +337,12 @@ async def main_async() -> None:
         raise RuntimeError("Заполните TELEGRAM_BOT_TOKEN")
     if not chat_ids:
         raise RuntimeError("Заполните TELEGRAM_CHAT_IDS")
+
+    if env_bool("PROCESS_TELEGRAM_COMMANDS"):
+        for chat_id in await fetch_new_command_chat_ids(token, set(chat_ids)):
+            await send_report(token, chat_id)
+        return
+
     for chat_id in chat_ids:
         await send_report(token, chat_id)
 
