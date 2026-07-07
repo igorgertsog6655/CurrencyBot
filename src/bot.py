@@ -54,7 +54,11 @@ def format_number(value: float) -> str:
 def format_delta(rate: Rate) -> str:
     if rate.previous_value is None:
         return "(нет данных за 24ч)"
-    delta = rate.value - rate.previous_value
+    return format_delta_value(rate.value, rate.previous_value)
+
+
+def format_delta_value(value: float, baseline: float) -> str:
+    delta = value - baseline
     if abs(delta) < 0.005:
         return "(⚫ 0,00)"
     marker = "🟢" if delta > 0 else "🔴"
@@ -70,7 +74,7 @@ async def fetch_cbr_rates(client: httpx.AsyncClient, date: datetime) -> list[Rat
     response = await client.get(CBR_URL, params={"date_req": date.strftime("%d/%m/%Y")})
     response.raise_for_status()
     root = ET.fromstring(response.content)
-    rate_date = datetime.strptime(root.attrib["Date"], "%d.%m.%Y")
+    date = datetime.strptime(root.attrib["Date"], "%d.%m.%Y")
     wanted = {"USD": "USD/RUB", "EUR": "EUR/RUB"}
     rates: list[Rate] = []
 
@@ -80,7 +84,7 @@ async def fetch_cbr_rates(client: httpx.AsyncClient, date: datetime) -> list[Rat
             continue
         nominal = int(valute.findtext("Nominal") or "1")
         value = float((valute.findtext("Value") or "0").replace(",", "."))
-        rates.append(Rate("ЦБ РФ", wanted[char_code], value / nominal, rate_date))
+        rates.append(Rate("ЦБ РФ", wanted[char_code], value / nominal, date))
 
     if len(rates) != 2:
         raise RuntimeError("Не удалось получить USD и EUR из ответа ЦБ РФ")
@@ -198,9 +202,10 @@ def build_message(cbr_rates: list[Rate], market_rates: list[Rate], forecasts: di
             f"BTC/USD: {format_number(market['BTC/USD'].value)} {format_delta(market['BTC/USD'])}",
             "",
             "Прогноз через 7 дней:",
-            f"USD/RUB: {format_number(forecasts['USD/RUB'][-1].value)}",
-            f"EUR/RUB: {format_number(forecasts['EUR/RUB'][-1].value)}",
-            f"BTC/USD: {format_number(forecasts['BTC/USD'][-1].value)}",
+            "",
+            f"USD/RUB: {format_number(forecasts['USD/RUB'][-1].value)} {format_delta_value(forecasts['USD/RUB'][-1].value, market['USD/RUB'].value)}",
+            f"EUR/RUB: {format_number(forecasts['EUR/RUB'][-1].value)} {format_delta_value(forecasts['EUR/RUB'][-1].value, market['EUR/RUB'].value)}",
+            f"BTC/USD: {format_number(forecasts['BTC/USD'][-1].value)} {format_delta_value(forecasts['BTC/USD'][-1].value, market['BTC/USD'].value)}",
             "Прогноз модельный, не финансовая рекомендация.",
         ]
     )
