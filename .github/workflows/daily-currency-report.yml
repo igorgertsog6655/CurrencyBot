@@ -4,7 +4,7 @@ on:
   schedule:
     # Temporary test schedule: every 5 minutes from minute 20 of each hour.
     # For Asia/Novosibirsk this includes 20:20, 20:25, 20:30, etc.
-    - cron: "20,25,30,35,40,45,50,55 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 jobs:
