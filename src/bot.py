@@ -6,7 +6,7 @@ import os
 import tempfile
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -21,6 +21,7 @@ CBR_URL = "https://www.cbr.ru/scripts/XML_daily.asp"
 YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 YAHOO_HEADERS = {"User-Agent": "Mozilla/5.0 currency-bot/1.0"}
 MARKET_SYMBOLS = {"USD/RUB": "RUB=X", "EUR/RUB": "EURRUB=X", "BTC/USD": "BTC-USD"}
+REPORT_TIMES = (time(7, 0), time(19, 0))
 
 
 @dataclass(frozen=True)
@@ -45,6 +46,26 @@ def env_int(name: str, default: int) -> int:
 
 def parse_chat_ids(raw: str | None) -> list[int]:
     return [] if not raw else [int(item.strip()) for item in raw.split(",") if item.strip()]
+
+
+def timezone() -> ZoneInfo:
+    return ZoneInfo(os.getenv("TIMEZONE", "Asia/Novosibirsk"))
+
+
+def next_report_time(now: datetime | None = None) -> datetime:
+    current = now or datetime.now(timezone())
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone())
+    for report_time in REPORT_TIMES:
+        candidate = current.replace(
+            hour=report_time.hour,
+            minute=report_time.minute,
+            second=0,
+            microsecond=0,
+        )
+        if candidate > current:
+            return candidate
+    return (current + timedelta(days=1)).replace(hour=7, minute=0, second=0, microsecond=0)
 
 
 def format_number(value: float) -> str:
@@ -77,7 +98,6 @@ async def fetch_cbr_rates(client: httpx.AsyncClient, date: datetime) -> list[Rat
     date = datetime.strptime(root.attrib["Date"], "%d.%m.%Y")
     wanted = {"USD": "USD/RUB", "EUR": "EUR/RUB"}
     rates: list[Rate] = []
-
     for valute in root.findall("Valute"):
         char_code = valute.findtext("CharCode")
         if char_code not in wanted:
@@ -85,7 +105,6 @@ async def fetch_cbr_rates(client: httpx.AsyncClient, date: datetime) -> list[Rat
         nominal = int(valute.findtext("Nominal") or "1")
         value = float((valute.findtext("Value") or "0").replace(",", "."))
         rates.append(Rate("ЦБ РФ", wanted[char_code], value / nominal, date))
-
     if len(rates) != 2:
         raise RuntimeError("Не удалось получить USD и EUR из ответа ЦБ РФ")
     return rates
@@ -156,7 +175,6 @@ def build_chart(
     hist_values = [value for _, value in visible_history]
     forecast_dates = [point.date for point in forecast]
     forecast_values = [point.value for point in forecast]
-
     plt.style.use("seaborn-v0_8-whitegrid")
     fig, ax = plt.subplots(figsize=(10, 5.4), dpi=160)
     ax.plot(hist_dates, hist_values, label=f"{pair} {source}", color="#1f77b4", linewidth=2.4)
@@ -185,7 +203,8 @@ def build_chart(
 def build_message(cbr_rates: list[Rate], market_rates: list[Rate], forecasts: dict[str, list[ForecastPoint]]) -> str:
     cbr = {rate.pair: rate for rate in cbr_rates}
     market = {rate.pair: rate for rate in market_rates}
-    generated_at = datetime.now(ZoneInfo(os.getenv("TIMEZONE", "Asia/Novosibirsk")))
+    generated_at = datetime.now(timezone())
+    next_report = next_report_time(generated_at)
     return "\n".join(
         [
             f"Курсы валют на {generated_at:%d.%m.%Y %H:%M}",
@@ -207,6 +226,8 @@ def build_message(cbr_rates: list[Rate], market_rates: list[Rate], forecasts: di
             f"EUR/RUB: {format_number(forecasts['EUR/RUB'][-1].value)} {format_delta_value(forecasts['EUR/RUB'][-1].value, market['EUR/RUB'].value)}",
             f"BTC/USD: {format_number(forecasts['BTC/USD'][-1].value)} {format_delta_value(forecasts['BTC/USD'][-1].value, market['BTC/USD'].value)}",
             "Прогноз модельный, не финансовая рекомендация.",
+            "",
+            f"Следующий отчет: {next_report:%d.%m.%Y %H:%M} по Новосибирску.",
         ]
     )
 
@@ -221,7 +242,6 @@ async def build_report() -> tuple[str, list[Path]]:
             )
             market_rates = await fetch_market_rates(client)
             histories = {pair: await fetch_yahoo_history(client, symbol) for pair, symbol in MARKET_SYMBOLS.items()}
-
         forecasts = {pair: forecast_rate(history) for pair, history in histories.items()}
         chart_specs = [("USD/RUB", "usd_rub", "Forex"), ("EUR/RUB", "eur_rub", "Forex"), ("BTC/USD", "btc_usd", "Crypto")]
         charts = [
@@ -233,7 +253,6 @@ async def build_report() -> tuple[str, list[Path]]:
             persistent_chart = Path.cwd() / chart.name
             persistent_chart.write_bytes(chart.read_bytes())
             persistent_charts.append(persistent_chart)
-
         return build_message(cbr_rates, market_rates, forecasts), persistent_charts
 
 
