@@ -4,13 +4,13 @@
 
 - курс доллара и евро к рублю по ЦБ РФ;
 - текущие Forex-котировки USD/RUB и EUR/RUB;
-- текущий курс BTC/RUB;
-- графики с модельным прогнозом USD/RUB, EUR/RUB и BTC/RUB на 7 дней вперед.
+- текущий курс BTC/USD;
+- графики с модельным прогнозом USD/RUB, EUR/RUB и BTC/USD на 7 дней вперед.
 
 ## Источники
 
 - ЦБ РФ: официальный XML `https://www.cbr.ru/scripts/XML_daily.asp`
-- Forex и BTC: открытые котировки Yahoo Finance для `RUB=X`, `EURRUB=X` и `BTC-RUB`
+- Forex и BTC: открытые котировки Yahoo Finance для `RUB=X`, `EURRUB=X` и `BTC-USD`
 
 Прогноз не является финансовой рекомендацией. Это простая модельная экстраполяция по недавней истории Forex.
 
