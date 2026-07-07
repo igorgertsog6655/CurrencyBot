@@ -207,7 +207,7 @@ def build_message(cbr_rates: list[Rate], market_rates: list[Rate], forecasts: di
     next_report = next_report_time(generated_at)
     return "\n".join(
         [
-            f"<b>Курсы валют на {generated_at:%d.%m.%Y %H:%M}</b>",
+            f"<b><u>Курсы валют на {generated_at:%d.%m.%Y %H:%M}</u></b>",
             "",
             "ЦБ РФ:",
             f"USD/RUB: {format_number(cbr['USD/RUB'].value)} {format_delta(cbr['USD/RUB'])}",
@@ -220,7 +220,7 @@ def build_message(cbr_rates: list[Rate], market_rates: list[Rate], forecasts: di
             "Crypto:",
             f"BTC/USD: {format_number(market['BTC/USD'].value)} {format_delta(market['BTC/USD'])}",
             "",
-            "<b>Прогноз через 7 дней:</b>",
+            "<b><u>Прогноз через 7 дней:</u></b>",
             "",
             f"USD/RUB: {format_number(forecasts['USD/RUB'][-1].value)} {format_delta_value(forecasts['USD/RUB'][-1].value, market['USD/RUB'].value)}",
             f"EUR/RUB: {format_number(forecasts['EUR/RUB'][-1].value)} {format_delta_value(forecasts['EUR/RUB'][-1].value, market['EUR/RUB'].value)}",
