@@ -29,6 +29,7 @@ class Rate:
     pair: str
     value: float
     date: datetime
+    previous_value: float | None = None
 
 
 @dataclass(frozen=True)
@@ -50,15 +51,26 @@ def format_number(value: float) -> str:
     return f"{value:,.2f}".replace(",", " ").replace(".", ",")
 
 
+def format_delta(rate: Rate) -> str:
+    if rate.previous_value is None:
+        return "(нет данных за 24ч)"
+    delta = rate.value - rate.previous_value
+    if abs(delta) < 0.005:
+        return "(⚫ 0,00)"
+    marker = "🟢" if delta > 0 else "🔴"
+    sign = "+" if delta > 0 else ""
+    return f"({marker} {sign}{format_number(delta)})"
+
+
 def unit_label(pair: str) -> str:
     return "Долларов США" if pair == "BTC/USD" else "Рублей"
 
 
-async def fetch_cbr_rates(client: httpx.AsyncClient) -> list[Rate]:
-    response = await client.get(CBR_URL, params={"date_req": datetime.now().strftime("%d/%m/%Y")})
+async def fetch_cbr_rates(client: httpx.AsyncClient, date: datetime) -> list[Rate]:
+    response = await client.get(CBR_URL, params={"date_req": date.strftime("%d/%m/%Y")})
     response.raise_for_status()
     root = ET.fromstring(response.content)
-    date = datetime.strptime(root.attrib["Date"], "%d.%m.%Y")
+    rate_date = datetime.strptime(root.attrib["Date"], "%d.%m.%Y")
     wanted = {"USD": "USD/RUB", "EUR": "EUR/RUB"}
     rates: list[Rate] = []
 
@@ -68,11 +80,16 @@ async def fetch_cbr_rates(client: httpx.AsyncClient) -> list[Rate]:
             continue
         nominal = int(valute.findtext("Nominal") or "1")
         value = float((valute.findtext("Value") or "0").replace(",", "."))
-        rates.append(Rate("ЦБ РФ", wanted[char_code], value / nominal, date))
+        rates.append(Rate("ЦБ РФ", wanted[char_code], value / nominal, rate_date))
 
     if len(rates) != 2:
         raise RuntimeError("Не удалось получить USD и EUR из ответа ЦБ РФ")
     return rates
+
+
+def add_previous_values(current: list[Rate], previous: list[Rate]) -> list[Rate]:
+    previous_by_pair = {rate.pair: rate.value for rate in previous}
+    return [Rate(rate.source, rate.pair, rate.value, rate.date, previous_by_pair.get(rate.pair)) for rate in current]
 
 
 async def fetch_yahoo_history(
@@ -101,8 +118,11 @@ async def fetch_yahoo_history(
 async def fetch_market_rates(client: httpx.AsyncClient) -> list[Rate]:
     rates: list[Rate] = []
     for pair, symbol in MARKET_SYMBOLS.items():
-        date, value = (await fetch_yahoo_history(client, symbol, range_="5d"))[-1]
-        rates.append(Rate("Crypto" if pair == "BTC/USD" else "Forex", pair, value, date))
+        history = await fetch_yahoo_history(client, symbol, range_="5d", interval="1h")
+        date, value = history[-1]
+        target_date = date - timedelta(hours=24)
+        _, previous_value = min(history, key=lambda point: abs(point[0] - target_date))
+        rates.append(Rate("Crypto" if pair == "BTC/USD" else "Forex", pair, value, date, previous_value))
     return rates
 
 
@@ -167,15 +187,15 @@ def build_message(cbr_rates: list[Rate], market_rates: list[Rate], forecasts: di
             f"Курсы валют на {generated_at:%d.%m.%Y %H:%M}",
             "",
             "ЦБ РФ:",
-            f"USD/RUB: {format_number(cbr['USD/RUB'].value)}",
-            f"EUR/RUB: {format_number(cbr['EUR/RUB'].value)}",
+            f"USD/RUB: {format_number(cbr['USD/RUB'].value)} {format_delta(cbr['USD/RUB'])}",
+            f"EUR/RUB: {format_number(cbr['EUR/RUB'].value)} {format_delta(cbr['EUR/RUB'])}",
             "",
             "Forex:",
-            f"USD/RUB: {format_number(market['USD/RUB'].value)}",
-            f"EUR/RUB: {format_number(market['EUR/RUB'].value)}",
+            f"USD/RUB: {format_number(market['USD/RUB'].value)} {format_delta(market['USD/RUB'])}",
+            f"EUR/RUB: {format_number(market['EUR/RUB'].value)} {format_delta(market['EUR/RUB'])}",
             "",
             "Crypto:",
-            f"BTC/USD: {format_number(market['BTC/USD'].value)}",
+            f"BTC/USD: {format_number(market['BTC/USD'].value)} {format_delta(market['BTC/USD'])}",
             "",
             "Прогноз через 7 дней:",
             f"USD/RUB: {format_number(forecasts['USD/RUB'][-1].value)}",
@@ -189,7 +209,11 @@ def build_message(cbr_rates: list[Rate], market_rates: list[Rate], forecasts: di
 async def build_report() -> tuple[str, list[Path]]:
     with tempfile.TemporaryDirectory() as tmp_dir:
         async with httpx.AsyncClient(timeout=env_int("HTTP_TIMEOUT_SECONDS", 20)) as client:
-            cbr_rates = await fetch_cbr_rates(client)
+            now = datetime.now()
+            cbr_rates = add_previous_values(
+                await fetch_cbr_rates(client, now),
+                await fetch_cbr_rates(client, now - timedelta(days=1)),
+            )
             market_rates = await fetch_market_rates(client)
             histories = {pair: await fetch_yahoo_history(client, symbol) for pair, symbol in MARKET_SYMBOLS.items()}
 
