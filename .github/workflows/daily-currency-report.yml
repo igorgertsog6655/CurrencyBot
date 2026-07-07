@@ -1,0 +1,33 @@
+name: Daily Currency Report
+
+on:
+  schedule:
+    # 09:00 Asia/Novosibirsk = 02:00 UTC.
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+jobs:
+  send-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Send report
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
+          RUN_ONCE: "true"
+          TIMEZONE: Asia/Novosibirsk
+          HTTP_TIMEOUT_SECONDS: "20"
+        run: python src/bot.py
