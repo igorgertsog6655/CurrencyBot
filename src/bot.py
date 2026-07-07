@@ -150,15 +150,48 @@ async def fetch_market_rates(client: httpx.AsyncClient) -> list[Rate]:
 
 
 def forecast_rate(history: list[tuple[datetime, float]], days: int = 7) -> list[ForecastPoint]:
-    recent = history[-60:] if len(history) >= 60 else history
-    x = np.arange(len(recent), dtype=float)
-    y = np.log([value for _, value in recent])
-    slope, intercept = np.polyfit(x, y, deg=1)
-    start = recent[-1][0]
-    return [
-        ForecastPoint(start + timedelta(days=offset), float(np.exp(intercept + slope * (len(recent) - 1 + offset))))
-        for offset in range(1, days + 1)
-    ]
+    values = np.array([value for _, value in history if value > 0], dtype=float)
+    if len(values) < 3:
+        start = history[-1][0]
+        last_value = float(values[-1]) if len(values) else 0.0
+        return [ForecastPoint(start + timedelta(days=offset), last_value) for offset in range(1, days + 1)]
+
+    log_values = np.log(values)
+    returns = np.diff(log_values)
+    median_return = float(np.median(returns))
+    mad = float(np.median(np.abs(returns - median_return)))
+    if mad > 0:
+        returns = np.clip(returns, median_return - 4 * mad, median_return + 4 * mad)
+
+    recent_log = log_values[-90:] if len(log_values) >= 90 else log_values
+    x = np.arange(len(recent_log), dtype=float)
+    trend_slope = float(np.polyfit(x, recent_log, deg=1)[0]) if len(recent_log) > 1 else 0.0
+
+    half_life = min(14, max(3, len(returns) // 4))
+    weights = np.exp(-np.arange(len(returns) - 1, -1, -1) / half_life)
+    weights = weights / weights.sum()
+    ewma_drift = float(np.sum(returns * weights))
+    short_momentum = float(np.mean(returns[-7:])) if len(returns) >= 7 else float(np.mean(returns))
+    long_mean = float(np.mean(log_values[-120:])) if len(log_values) >= 120 else float(np.mean(log_values))
+    volatility = float(np.sqrt(np.sum(((returns - ewma_drift) ** 2) * weights)))
+    shrink = 1 / (1 + 5 * volatility)
+
+    current_log = float(log_values[-1])
+    start = history[-1][0]
+    points: list[ForecastPoint] = []
+
+    for offset in range(1, days + 1):
+        reversion = (long_mean - current_log) * (1 - np.exp(-0.08 * offset))
+        ensemble_move = (
+            0.35 * trend_slope * offset
+            + 0.30 * ewma_drift * offset
+            + 0.20 * short_momentum * min(offset, 3)
+            + 0.15 * reversion
+        )
+        predicted = float(np.exp(current_log + ensemble_move * shrink))
+        points.append(ForecastPoint(start + timedelta(days=offset), predicted))
+
+    return points
 
 
 def build_chart(
