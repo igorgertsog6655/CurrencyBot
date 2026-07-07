@@ -307,9 +307,12 @@ async def send_report(token: str, chat_id: int) -> None:
 async def fetch_new_command_chat_ids(token: str, allowed_chat_ids: set[int]) -> list[int]:
     url = f"https://api.telegram.org/bot{token}/getUpdates"
     async with httpx.AsyncClient(timeout=env_int("HTTP_TIMEOUT_SECONDS", 20)) as client:
-        response = await client.get(url, params={"offset": -100, "timeout": 0})
+        response = await client.get(url, params={"timeout": 0})
         response.raise_for_status()
         updates = response.json().get("result", [])
+        update_ids = [update.get("update_id") for update in updates if isinstance(update.get("update_id"), int)]
+        if update_ids:
+            await client.get(url, params={"offset": max(update_ids) + 1, "timeout": 0})
 
     now_ts = datetime.now().timestamp()
     chat_ids: list[int] = []
