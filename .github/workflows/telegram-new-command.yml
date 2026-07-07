@@ -28,6 +28,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
           PROCESS_TELEGRAM_COMMANDS: "true"
+          SEND_REPORT_WHEN_NO_COMMANDS: ${{ github.event_name == 'workflow_dispatch' }}
           TIMEZONE: Asia/Novosibirsk
           HTTP_TIMEOUT_SECONDS: "20"
         run: python src/bot.py
