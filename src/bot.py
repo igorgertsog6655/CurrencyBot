@@ -21,7 +21,7 @@ CBR_URL = "https://www.cbr.ru/scripts/XML_daily.asp"
 YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 YAHOO_HEADERS = {"User-Agent": "Mozilla/5.0 currency-bot/1.0"}
 MARKET_SYMBOLS = {"USD/RUB": "RUB=X", "EUR/RUB": "EURRUB=X", "BTC/USD": "BTC-USD"}
-REPORT_TIMES = (time(7, 0), time(19, 0))
+REPORT_TIMES = (time(7, 0), time(12, 0), time(19, 0))
 COMMAND_MAX_AGE_SECONDS = 24 * 60 * 60
 
 
