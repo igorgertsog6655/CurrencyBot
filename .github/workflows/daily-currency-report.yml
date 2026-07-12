@@ -2,8 +2,8 @@ name: Daily Currency Report
 
 on:
   schedule:
-    # 07:00, 12:00 and 19:00 Asia/Novosibirsk = 00:00, 05:00 and 12:00 UTC.
-    - cron: "0 0,5,12 * * *"
+    # 07:07, 12:07 and 19:07 Asia/Novosibirsk = 00:07, 05:07 and 12:07 UTC.
+    - cron: "7 0,5,12 * * *"
   workflow_dispatch:
 
 jobs:
