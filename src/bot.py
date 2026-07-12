@@ -21,7 +21,7 @@ CBR_URL = "https://www.cbr.ru/scripts/XML_daily.asp"
 YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 YAHOO_HEADERS = {"User-Agent": "Mozilla/5.0 currency-bot/1.0"}
 MARKET_SYMBOLS = {"USD/RUB": "RUB=X", "EUR/RUB": "EURRUB=X", "BTC/USD": "BTC-USD"}
-REPORT_TIMES = (time(7, 0), time(12, 0), time(19, 0))
+REPORT_TIMES = (time(7, 7), time(12, 7), time(19, 7))
 COMMAND_MAX_AGE_SECONDS = 24 * 60 * 60
 
 
@@ -71,7 +71,7 @@ def next_report_time(now: datetime | None = None) -> datetime:
         )
         if candidate > current:
             return candidate
-    return (current + timedelta(days=1)).replace(hour=7, minute=0, second=0, microsecond=0)
+    return (current + timedelta(days=1)).replace(hour=7, minute=7, second=0, microsecond=0)
 
 
 def format_number(value: float) -> str:
